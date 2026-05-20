@@ -73,7 +73,10 @@ export default function App() {
   const [storageEnabled] = useState(() =>
     getUltimateStorageEnabledPreference()
   );
-  const gameStartedAt = useRef<number>(Date.now());
+  const gameStartedAt = useRef<number>(0);
+  useEffect(() => {
+    gameStartedAt.current = Date.now();
+  }, []);
   const moveHistoryContainerRef = useRef<HTMLDivElement>(null);
 
   // Keep a ref of boards for stable callbacks
@@ -101,6 +104,8 @@ export default function App() {
   // AI config
   const [aiPlayers, setAiPlayers] = useState<{ w: "human" | "ai"; b: "human" | "ai" }>(() => ({ w: "human", b: "human" }));
   const [aiSkill, setAiSkill] = useState<{ w: number; b: number }>({ w: 10, b: 10 });
+  const [rematchSent, setRematchSent] = useState(false);
+  const [rematchIncoming, setRematchIncoming] = useState(false);
 
   // ── Multiplayer state ───────────────────────────────────────────────────
   // (Modals removed to comply with plan.md)
@@ -116,6 +121,8 @@ export default function App() {
     resetAllBoards();
     gameStartedAt.current = Date.now();
     deleteUltimateGameFromStorage();
+    setRematchSent(false);
+    setRematchIncoming(false);
   }, [resetAllBoards]);
 
   const onRemoteSetup = useCallback((setup: GameStateSnapshot) => {
@@ -157,16 +164,16 @@ export default function App() {
     }
   }, [loadGame, resetAllBoards]);
 
-  const onRemoteTimeout = useCallback(() => {
-    // Handle timeouts if blitz mode is enabled
-  }, []);
-
   const onRemoteRematchRequest = useCallback(() => {
-    // Spec says no rematch dialogs. If opponent restarts, it handles through regular means
+    // Opponent requested a restart in the same room. Mark incoming request
+    // and let an effect handle the actual agreed reset once both sides have
+    // requested.
+    setRematchIncoming(true);
   }, []);
+  
 
   const onRemoteRematchResponse = useCallback(() => {
-    // Spec says no rematch dialogs.
+    // Not used for the simple "both press to agree" flow.
   }, []);
 
   const onRemoteRoutingMode = useCallback((payload: { mode: string; requiredBoard?: string | null }) => {
@@ -206,16 +213,6 @@ export default function App() {
     };
   }, [boards, globalTurn, requiredBoard, capturedBoards, pendingChecks, routingMode, decisionMaker, shouldShowModal, choiceBoards]);
 
-  const getBlitz = useCallback(() => {
-    // Return blitz clock times
-    return false;
-  }, []);
-
-  const getClockTimes = useCallback(() => {
-    // Return clock times
-    return { wt: 300, bt: 300 };
-  }, []);
-
   const getHasMoves = useCallback(() => {
     return moveHistory.length > 0;
   }, [moveHistory]);
@@ -234,21 +231,42 @@ export default function App() {
     hostMultiplayer,
     joinMultiplayer,
     cancelMultiplayer,
+    sendRematchRequest,
+    sendReset,
   } =
     useMultiplayer({
       onRemoteMove,
       onRemoteReset,
       onRemoteSetup,
-      onRemoteTimeout,
       onRemoteRematchRequest,
       onRemoteRematchResponse,
       onRemoteRoutingMode,
       onRemoteBoardChoice,
       getFen,
-      getBlitz,
-      getClockTimes,
       getHasMoves,
     });
+
+  // When both sides have requested a rematch, the host should broadcast a
+  // reset and both clients should reset locally. We run this in an effect so
+  // it has access to `isJoiner` and `sendReset` which are provided by
+  // `useMultiplayer`.
+  useEffect(() => {
+    if (rematchSent && rematchIncoming && !isJoiner) {
+      // perform authoritative reset from host
+      sendReset?.();
+      resetAllBoards();
+      gameStartedAt.current = Date.now();
+      deleteUltimateGameFromStorage();
+      // clear UI state
+      const t = window.setTimeout(() => {
+        setRematchSent(false);
+        setRematchIncoming(false);
+      }, 50);
+      return () => clearTimeout(t);
+    }
+    // If both sides requested but we're the joiner, we'll just wait for the host's reset.
+    return undefined;
+  }, [rematchSent, rematchIncoming, isJoiner, sendReset, resetAllBoards]);
 
   const [aiPaused, setAiPaused] = useState(false);
   const [hasSavedGame, setHasSavedGame] = useState(false);
@@ -257,7 +275,8 @@ export default function App() {
   useEffect(() => {
     // If no AI remains active, clear paused state.
     if (!hasAI && aiPaused) {
-      setAiPaused(false);
+      const t = window.setTimeout(() => setAiPaused(false), 0);
+      return () => clearTimeout(t);
     }
   }, [hasAI, aiPaused]);
 
@@ -284,7 +303,8 @@ export default function App() {
     if (storageEnabled) {
       const saved = getUltimateGameFromStorage();
       if (saved) {
-        setHasSavedGame(true);
+        const t = window.setTimeout(() => setHasSavedGame(true), 0);
+        return () => clearTimeout(t);
       }
     }
 
@@ -543,6 +563,23 @@ export default function App() {
     joinMultiplayer(rId);
   }, [joinMultiplayer]);
 
+  const requestRematch = useCallback(() => {
+    if (!sendRematchRequest) return;
+    sendRematchRequest();
+    setRematchSent(true);
+    // If opponent already requested and we're host, perform reset now
+    if (rematchIncoming && !isJoiner) {
+      setTimeout(() => {
+        sendReset?.();
+        resetAllBoards();
+        gameStartedAt.current = Date.now();
+        deleteUltimateGameFromStorage();
+        setRematchSent(false);
+        setRematchIncoming(false);
+      }, 50);
+    }
+  }, [sendRematchRequest, rematchIncoming, isJoiner, sendReset, resetAllBoards]);
+
 
 
   const handleCopyLink = useCallback(() => {
@@ -601,6 +638,17 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [canUndo, handleUndo, handleCopyLink]);
+
+  // Clear rematch state when leaving multiplayer or when room changes
+  useEffect(() => {
+    if (mode !== 'multi' || !connected) {
+      const t = window.setTimeout(() => {
+        setRematchSent(false);
+        setRematchIncoming(false);
+      }, 0);
+      return () => clearTimeout(t);
+    }
+  }, [mode, connected, roomId]);
 
 
   // ── Derived display values ────────────────────────────────────────────────
@@ -727,6 +775,9 @@ export default function App() {
             isReconnecting={isReconnecting}
             onLeaveGame={cancelMultiplayer}
             onContinueLocally={handleContinueLocally}
+            rematchSent={rematchSent}
+            rematchIncoming={rematchIncoming}
+            onRequestRematch={requestRematch}
           />
         </div>
       </div>

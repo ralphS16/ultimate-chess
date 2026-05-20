@@ -31,6 +31,9 @@ interface GameControlBarProps {
   isReconnecting?: boolean;
   onLeaveGame?: () => void;
   onContinueLocally?: (config: AIConfig) => void;
+  rematchSent?: boolean;
+  rematchIncoming?: boolean;
+  onRequestRematch?: () => void;
 }
 
 export function GameControlBar({
@@ -57,6 +60,9 @@ export function GameControlBar({
   isReconnecting,
   onLeaveGame,
   onContinueLocally,
+  rematchSent,
+  rematchIncoming,
+  onRequestRematch,
 }: GameControlBarProps) {
   const [menuPath, setMenuPath] = useState<('new' | 'local' | 'online' | 'host' | 'join')[]>([]);
   const [localGameStarted, setLocalGameStarted] = useState(false);
@@ -302,6 +308,23 @@ export function GameControlBar({
                   `Online – ${playerColor === 'w' ? 'White' : 'Black'} ${latency != null ? `(${latency}ms)` : ''}`
             }
           </span>
+        )}
+
+        {mode === 'multi' && connected && !peerLeft && !isReconnecting && (
+          <>
+            {!rematchSent && !rematchIncoming && (
+              <button className="btn--toggle" onClick={() => onRequestRematch?.()}>Request Restart</button>
+            )}
+            {rematchIncoming && !rematchSent && (
+              <button className="btn--toggle btn--toggle-active" onClick={() => onRequestRematch?.()}>Agree to Restart</button>
+            )}
+            {rematchSent && !rematchIncoming && (
+              <span className="btn--toggle" style={{ pointerEvents: 'none' }}>Restart requested</span>
+            )}
+            {rematchSent && rematchIncoming && (
+              <span className="btn--toggle btn--toggle-active" style={{ pointerEvents: 'none' }}>Restarting…</span>
+            )}
+          </>
         )}
 
         {mode === 'multi' && peerLeft && !isReconnecting && !isContinueLocal && (

@@ -11,7 +11,7 @@ import type { GameStateSnapshot } from "../utils/gameStateSync";
 type MovePayload = { boardName: string; from: string; to: string; promotion?: string };
 type SetupPayload = GameStateSnapshot;
 type TimeoutPayload = { color: "w" | "b" };
-type RematchRequestPayload = { blitz: boolean };
+type RematchRequestPayload = Record<string, never>;
 type RematchResponsePayload = { accepted: boolean };
 type RoutingModePayload = {
   mode: "normal" | "free-pick" | "castling-choice" | "loser-picks";
@@ -31,18 +31,16 @@ export function useMultiplayer({
   onRemoteRoutingMode,
   onRemoteBoardChoice,
   getFen,
-  getBlitz,
-  getClockTimes,
   getHasMoves,
 }: {
   onRemoteMove: (boardName: string, from: string, to: string, promotion?: string) => boolean;
   onRemoteReset: () => void;
   /** Called on the joiner when the host sends the complete game state on connect/rejoin. */
   onRemoteSetup: (setup: GameStateSnapshot) => void;
-  /** Called when the opponent's clock reaches zero. */
-  onRemoteTimeout: (color: "w" | "b") => void;
+  /** Called when a remote timeout occurs. */
+  onRemoteTimeout?: (color: "w" | "b") => void;
   /** Called when the opponent requests a rematch. */
-  onRemoteRematchRequest: (blitz: boolean) => void;
+  onRemoteRematchRequest: () => void;
   /** Called when the opponent responds to our rematch request. */
   onRemoteRematchResponse: (accepted: boolean) => void;
   /** Called when opponent's routing mode changes (ultimate chess). */
@@ -51,10 +49,6 @@ export function useMultiplayer({
   onRemoteBoardChoice: (boardName: string) => void;
   /** Returns the host's current complete game state at the moment a peer joins. */
   getFen: () => GameStateSnapshot;
-  /** Returns whether blitz mode is active at the moment a peer joins. */
-  getBlitz: () => boolean;
-  /** Returns the current clock times (seconds) to sync to the joiner. */
-  getClockTimes: () => { wt: number; bt: number };
   /** Returns whether the current game state has moves. */
   getHasMoves: () => boolean;
 }) {
@@ -112,8 +106,6 @@ export function useMultiplayer({
   const onRemoteRoutingModeRef = useRef(onRemoteRoutingMode);
   const onRemoteBoardChoiceRef = useRef(onRemoteBoardChoice);
   const getFenRef = useRef(getFen);
-  const getBlitzRef = useRef(getBlitz);
-  const getClockTimesRef = useRef(getClockTimes);
   const getHasMovesRef = useRef(getHasMoves);
 
   // Update refs when callbacks change
@@ -127,8 +119,6 @@ export function useMultiplayer({
     onRemoteRoutingModeRef.current = onRemoteRoutingMode;
     onRemoteBoardChoiceRef.current = onRemoteBoardChoice;
     getFenRef.current = getFen;
-    getBlitzRef.current = getBlitz;
-    getClockTimesRef.current = getClockTimes;
     getHasMovesRef.current = getHasMoves;
   }, [
     onRemoteMove,
@@ -140,8 +130,6 @@ export function useMultiplayer({
     onRemoteRoutingMode,
     onRemoteBoardChoice,
     getFen,
-    getBlitz,
-    getClockTimes,
     getHasMoves,
   ]);
 
@@ -202,14 +190,14 @@ export function useMultiplayer({
 
   const createTimeoutHandler = useCallback(
     () => (payload: TimeoutPayload) => {
-      onRemoteTimeoutRef.current(payload.color);
+      onRemoteTimeoutRef.current?.(payload.color);
     },
     [],
   );
 
   const createRematchRequestHandler = useCallback(
-    () => (payload: RematchRequestPayload) => {
-      onRemoteRematchRequestRef.current(payload.blitz);
+    () => () => {
+      onRemoteRematchRequestRef.current();
     },
     [],
   );
@@ -320,7 +308,7 @@ export function useMultiplayer({
       const [sendMove, getMove] = room.makeAction<MovePayload>("move");
       const [sendReset, getReset] =
         room.makeAction<Record<string, never>>("reset");
-      // "setup" carries the authoritative board position and game mode (blitz/standard).
+      // "setup" carries the authoritative board position
       // Using any to satisfy Trystero's complex DataPayload constraint
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const [sendSetup, getSetup] = room.makeAction<any>("setup");
@@ -610,11 +598,16 @@ export function useMultiplayer({
     [],
   );
 
+  /** Broadcast a reset to the opponent. */
+  const sendReset = useCallback(() => {
+    sendResetRef.current?.({});
+  }, []);
+
 
 
   /** Ask the opponent for a rematch with the given mode. */
-  const sendRematchRequest = useCallback((blitz: boolean) => {
-    sendRematchRequestRef.current?.({ blitz });
+  const sendRematchRequest = useCallback(() => {
+    sendRematchRequestRef.current?.({});
   }, []);
 
   /** Respond to the opponent's rematch request. */
@@ -649,6 +642,7 @@ export function useMultiplayer({
     sendMove,
     sendRematchRequest,
     sendRematchResponse,
+    sendReset: sendReset,
     sendRoutingMode,
     sendBoardChoice,
     latency,

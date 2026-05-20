@@ -520,23 +520,6 @@ textarea {
   }
 }
 
-.badge--blitz {
-  color: var(--color-text-primary);
-  border-color: var(--color-border-primary);
-}
-
-.badge--blitz-large {
-  font-size: 0.85rem;
-  padding: 2px var(--space-md);
-}
-
-@media (max-width: 600px) {
-  .badge--blitz-large {
-    font-size: 0.9rem;
-    padding: 3px var(--space-md);
-  }
-}
-
 .status-indicator {
   font-size: 0.8rem;
   font-weight: bold;
@@ -864,9 +847,7 @@ textarea {
   font-weight: bold;
 }
 
-.rematch-status__mode--blitz {
-  color: var(--color-text-primary);
-}
+
 
 .rematch-status__mode--standard {
   color: var(--color-text-primary);
@@ -1787,25 +1768,6 @@ textarea {
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
-  }
-}
-
-/* Chess Clock Mobile Improvements */
-@media (max-width: 768px) {
-
-  /* Improve clock visibility and touch targets */
-  .chess-clock {
-    padding: 8px 16px;
-    margin: 6px 0;
-    font-size: 1.45rem;
-  }
-
-  .chess-clock__label {
-    font-size: 0.8rem;
-  }
-
-  .chess-clock__time {
-    font-size: 1.6rem;
   }
 }
 

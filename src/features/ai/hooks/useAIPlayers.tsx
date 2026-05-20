@@ -186,7 +186,7 @@ export function useAIPlayers(opts: UseAIPlayersOptions) {
     };
   }, [mode, players, globalTurn, targetBoard, targetBoardFen, playerColor, skillLevel, makeMoveOnBoard, isPaused]);
 
-  return {
-    engines: enginesRef.current,
-  };
+  // The hook manages engines internally; no values are returned to avoid
+  // accessing refs during render.
+  return undefined;
 }
