@@ -62,6 +62,9 @@ const Board = memo(function Board({
         boardResult === 'white' ? 'White Won' : 'Black Won'
       }`
     : BOARD_DISPLAY_NAMES[boardName];
+  const checkLabel = hasPendingCheck && pendingCheckPlayer && !isFinished
+    ? `${pendingCheckPlayer === 'w' ? 'White' : 'Black'} in Check`
+    : null;
 
   const handleBoardClick = () => {
     if (isSelectableForChoice && onBoardChoice) {
@@ -102,7 +105,7 @@ const Board = memo(function Board({
         filter: isDisabled ? 'grayscale(0.8)' : undefined,
         position: 'relative',
         cursor: isSelectableForChoice && !isDisabled ? 'pointer' : undefined,
-        boxShadow: isSelectableForChoice && !isDisabled ? '0 0 0 4px rgba(100, 200, 100, 0.6)' : undefined,
+        boxShadow: isSelectableForChoice && !isDisabled ? 'inset 0 0 0 4px rgba(100, 200, 100, 0.8)' : undefined,
       }}
       onClick={handleBoardClick}
     >
@@ -114,6 +117,11 @@ const Board = memo(function Board({
         }}
       >
         <span className="ultimate-board__title">{boardTitle}</span>
+        {checkLabel && (
+          <span className="ultimate-board__badge ultimate-board__badge--check">
+            {checkLabel}
+          </span>
+        )}
         {isSelectableForChoice && decisionMaker && (
           <span className="ultimate-board__badge" style={{ backgroundColor: 'rgba(100, 200, 100, 0.8)' }}>
             {decisionMaker === 'w' ? 'WHITE PICKS' : 'BLACK PICKS'}
@@ -122,12 +130,11 @@ const Board = memo(function Board({
         {!isSelectableForChoice && isAvailable && !isFinished && (
           <span
             className="ultimate-board__badge"
-            title={hasPendingCheck && pendingCheckPlayer ? `${pendingCheckPlayer === 'w' ? 'White' : 'Black'} has pending check` : undefined}
+            title={checkLabel ?? undefined}
           >
             {currentPlayer === 'w' ? 'WHITE TURN' : 'BLACK TURN'}
             {isCapturedWhite && <span className="ultimate-board__capture-indicator">White Won</span>}
             {isCapturedBlack && <span className="ultimate-board__capture-indicator">Black Won</span>}
-            {hasPendingCheck && ' ⚠'}
           </span>
         )}
       </div>

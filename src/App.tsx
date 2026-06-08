@@ -792,12 +792,6 @@ export default function App() {
             >
               rules
             </button>
-
-            {ultimateWinner && (
-              <div className="game-winner-banner" style={{ margin: 0 }}>
-                {ultimateWinner === 'w' ? 'White Wins!' : 'Black Wins!'}
-              </div>
-            )}
           </div>
         </div>
 
