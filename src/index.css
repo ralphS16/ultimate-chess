@@ -377,7 +377,7 @@ textarea {
   border-right: 2px solid var(--color-border-primary);
   transition: background-color var(--transition-fast), color var(--transition-fast);
   background-color: transparent;
-  color: var(--color-text-dim);
+  color: var(--color-text-primary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -749,14 +749,30 @@ textarea {
   align-items: end;
 }
 .rules-link {
+  appearance: none;
+  position: relative;
+  z-index: 300;
+  display: inline-block;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
   font-size: 0.9rem;
+  font-family: inherit;
+  text-decoration: underline;
   color: var(--color-text-primary);
   cursor: pointer;
+  line-height: 1;
 }
 
 /* Ensure rules link lines up with the bottom of the title */
 .rules-link {
   align-self: flex-end;
+}
+
+.rules-link:hover,
+.rules-link:focus-visible {
+  font-weight: bold;
 }
 .ultimate-control-row {
   display: flex;

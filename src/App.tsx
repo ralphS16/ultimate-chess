@@ -101,6 +101,20 @@ export default function App() {
   const [linkCopied, setLinkCopied] = useState(false);
   const [isConfiguring, setIsConfiguring] = useState(false);
   const [showRules, setShowRules] = useState(false);
+
+  useEffect(() => {
+    const rulesSeenKey = "ultimate-chess-rules-seen";
+
+    try {
+      if (window.localStorage.getItem(rulesSeenKey)) return;
+
+      window.localStorage.setItem(rulesSeenKey, "true");
+      setShowRules(true);
+    } catch {
+      setShowRules(true);
+    }
+  }, []);
+
   // AI config
   const [aiPlayers, setAiPlayers] = useState<{ w: "human" | "ai"; b: "human" | "ai" }>(() => ({ w: "human", b: "human" }));
   const [aiSkill, setAiSkill] = useState<{ w: number; b: number }>({ w: 10, b: 10 });
@@ -710,12 +724,13 @@ export default function App() {
           </div>
 
           <div className="ultimate-header-actions">
-            <div
+            <button
+              type="button"
               className="rules-link"
               onClick={() => setShowRules(true)}
             >
-              <u>rules</u>
-            </div>
+              rules
+            </button>
 
             {ultimateWinner && (
               <div className="game-winner-banner" style={{ margin: 0 }}>
