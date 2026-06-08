@@ -732,16 +732,18 @@ textarea {
 /* Header rows: title + actions (rules/winner) on top, controls on second row */
 .ultimate-header-container {
   width: 100%;
-  display: flex;
-  flex-direction: row;
+  display: grid;
+  grid-template-columns: auto 1fr;
   gap: 6px;
-  align-items: center;
+  align-items: end;
   margin-bottom: 4px;
 }
 .ultimate-header-top {
   display: flex;
   flex-direction: row;
   align-items: end;
+  grid-column: 1;
+  grid-row: 1;
 }
 .ultimate-header-actions {
   display: flex;
@@ -775,29 +777,77 @@ textarea {
   font-weight: bold;
 }
 .ultimate-control-row {
+  display: contents;
+}
+
+.control-shell {
+  display: contents;
+}
+
+.control-top-level,
+.control-options-group {
+  flex-direction: row;
+}
+
+.control-top-level {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  align-self: end;
+}
+
+.control-options-row {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  justify-self: end;
   display: flex;
-  width: 100%;
+  flex-wrap: wrap;
   justify-content: flex-end;
-  margin-left: auto;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.control-status,
+.control-label {
+  pointer-events: none;
+  font-weight: bold;
+}
+
+.control-select {
+  display: inline-block;
+  min-width: 88px;
+}
+
+.control-room-input {
+  min-width: 120px;
+  border: none;
+  border-right: 2px solid var(--color-border-primary);
+  outline: none;
 }
 
 /* On small screens stack header and place top-level buttons above other controls */
 @media (max-width: 600px) {
   .ultimate-header-container {
-    flex-direction: column;
+    grid-template-columns: 1fr;
     align-items: stretch;
   }
   .ultimate-header-top {
+    grid-column: 1;
+    grid-row: 1;
     justify-content: space-between;
   }
-  .ultimate-control-row {
-    margin-left: 0;
+  .control-top-level {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
+  }
+  .control-options-row {
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: start;
+    justify-content: flex-start;
   }
   .control-top-level {
-    order: -1;
-    align-self: flex-end;
-    display: inline-flex;
-    justify-content: flex-end;
     width: auto;
     max-width: 100%;
   }
@@ -1711,7 +1761,32 @@ textarea {
   position: relative;
 }
 
-/* Game Over Overlay Removed */
+.ultimate-winner-overlay {
+  appearance: none;
+  position: absolute;
+  inset: 0;
+  z-index: 150;
+  border: 2px solid var(--color-border-primary);
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.ultimate-winner-overlay__title {
+  font-size: 2rem;
+  font-weight: bold;
+}
+
+.ultimate-winner-overlay__hint {
+  font-size: 0.95rem;
+  font-weight: bold;
+}
 
 /* Finished Board Indicators */
 .ultimate-board--finished {

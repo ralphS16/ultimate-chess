@@ -1,6 +1,7 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useState } from "react";
 
-export type NewGameMode = 'local' | 'ai' | 'host';
+export type NewGameMode = "local" | "ai" | "host";
+export type GameSessionState = "idle" | "loaded-paused" | "active" | "finished";
 
 export interface AIConfig {
   players: { w: "human" | "ai"; b: "human" | "ai" };
@@ -11,6 +12,10 @@ interface GameControlBarProps {
   linkCopied: boolean;
   onSaveGame: () => void;
   onStartNewGame: (mode: NewGameMode, config?: AIConfig) => void;
+  onResumeLoadedGame: () => void;
+  sessionState: GameSessionState;
+  optionsOpen: boolean;
+  onOptionsOpenChange: (open: boolean) => void;
   roomId?: string | null;
   connected?: boolean;
   onJoinRoom: (roomId: string) => void;
@@ -23,8 +28,7 @@ interface GameControlBarProps {
   onConfigChange?: (configuring: boolean) => void;
   canUndo?: boolean;
   onUndo?: () => boolean;
-  hasSavedGame?: boolean;
-  onResumeSavedGame?: () => void;
+  canSave?: boolean;
   aiPaused?: boolean;
   onPauseResume?: () => void;
   peerLeft?: boolean;
@@ -40,6 +44,10 @@ export function GameControlBar({
   linkCopied,
   onSaveGame,
   onStartNewGame,
+  onResumeLoadedGame,
+  sessionState,
+  optionsOpen,
+  onOptionsOpenChange,
   roomId,
   connected,
   onJoinRoom,
@@ -52,8 +60,7 @@ export function GameControlBar({
   onConfigChange,
   canUndo = false,
   onUndo,
-  hasSavedGame,
-  onResumeSavedGame,
+  canSave = false,
   aiPaused,
   onPauseResume,
   peerLeft,
@@ -64,29 +71,37 @@ export function GameControlBar({
   rematchIncoming,
   onRequestRematch,
 }: GameControlBarProps) {
-  const [menuPath, setMenuPath] = useState<('new' | 'local' | 'online' | 'host' | 'join')[]>([]);
-  const [localGameStarted, setLocalGameStarted] = useState(false);
-  const [continueLocal, setContinueLocal] = useState(false);
-  // AI settings staging
-  const [localAiPlayers, setLocalAiPlayers] = useState<{ w: "human" | "ai"; b: "human" | "ai" }>(() => ({ w: "human", b: "human" }));
+  const [setupMode, setSetupMode] = useState<"local" | "online">("local");
+  const [onlineAction, setOnlineAction] = useState<"host" | "join">("host");
+  const [localAiPlayers, setLocalAiPlayers] = useState<{ w: "human" | "ai"; b: "human" | "ai" }>(
+    () => aiPlayers ?? { w: "human", b: "human" }
+  );
   const [joinInput, setJoinInput] = useState("");
   const [localLinkCopied, setLocalLinkCopied] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
-  const effectiveMenuPath = useMemo(
-    () => (connected && menuPath.includes('join') ? [] : menuPath),
-    [connected, menuPath]
-  );
+
+  const isSetupVisible = optionsOpen || sessionState === "idle" || sessionState === "loaded-paused" || mode === "multi";
+  const isLoadedPaused = sessionState === "loaded-paused";
+  const hasAi = localAiPlayers.w === "ai" || localAiPlayers.b === "ai";
 
   useEffect(() => {
-    const isConfiguring = effectiveMenuPath.length > 0 && !localGameStarted;
-    onConfigChange?.(isConfiguring);
-  }, [effectiveMenuPath, localGameStarted, onConfigChange]);
+    if (aiPlayers) {
+      const t = window.setTimeout(() => setLocalAiPlayers(aiPlayers), 0);
+      return () => window.clearTimeout(t);
+    }
+    return undefined;
+  }, [aiPlayers]);
+
+  useEffect(() => {
+    onConfigChange?.(isSetupVisible && mode !== "multi" && sessionState !== "active");
+  }, [isSetupVisible, mode, sessionState, onConfigChange]);
 
   useEffect(() => {
     if (connected) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setIsJoining(false);
+      const t = window.setTimeout(() => setIsJoining(false), 0);
+      return () => window.clearTimeout(t);
     }
+    return undefined;
   }, [connected]);
 
   const handleCopyInvite = useCallback(() => {
@@ -98,272 +113,238 @@ export function GameControlBar({
     });
   }, [roomId]);
 
-  const pushMenu = (path: 'new' | 'local' | 'online' | 'host' | 'join') => {
-    if (path === 'new') {
-      if (menuPath.length > 0) {
-        setMenuPath([]);
-      } else {
-        setMenuPath(['new']);
-        setLocalGameStarted(false);
-        setContinueLocal(false);
-        if (aiPlayers) setLocalAiPlayers(aiPlayers);
-      }
-    } else {
-      if (path === 'local' || path === 'online') {
-        setMenuPath(['new', path]);
-        if (path === 'local') {
-          if (aiPlayers) setLocalAiPlayers(aiPlayers);
-        }
-      }
-      else if (path === 'host' || path === 'join') setMenuPath(['new', 'online', path]);
-    }
-  };
-
-  const getCombinedValue = (color: "w" | "b") => {
-    const type = localAiPlayers[color];
-    return type === "human" ? "human" : "ai";
-  };
-
-  const handleCombinedChange = (color: "w" | "b", value: string) => {
+  const handlePlayerChange = (color: "w" | "b", value: string) => {
     const nextPlayers = { ...localAiPlayers, [color]: value as "human" | "ai" };
     setLocalAiPlayers(nextPlayers);
-    if (localGameStarted) onApplyAIOptions?.({ players: nextPlayers });
+    if (sessionState === "active" && mode !== "multi") {
+      onApplyAIOptions?.({ players: nextPlayers });
+    }
   };
 
   const handleStartLocal = () => {
-    const hasAi = localAiPlayers.w === "ai" || localAiPlayers.b === "ai";
-    if (hasAi) {
-      onStartNewGame("ai", { players: localAiPlayers });
-    } else {
-      onStartNewGame("local", { players: localAiPlayers });
-    }
-    setLocalGameStarted(true);
+    onStartNewGame(hasAi ? "ai" : "local", { players: localAiPlayers });
+    onOptionsOpenChange(false);
   };
 
-  const handleResumeSavedGameClick = () => {
-    onResumeSavedGame?.();
-    // Keep local controls visible after resuming a saved local session.
-    setMenuPath(['new', 'local']);
-    setLocalGameStarted(true);
+  const handleResume = () => {
+    onResumeLoadedGame();
+    onOptionsOpenChange(false);
   };
 
-  const handleContinueLocallyClick = () => {
-    if (playerColor) {
-      setLocalAiPlayers({
-        w: playerColor === 'w' ? 'human' : 'ai',
-        b: playerColor === 'b' ? 'human' : 'ai',
-      });
-    }
-    setContinueLocal(true);
+  const handleHost = () => {
+    onStartNewGame("host");
+    onOptionsOpenChange(true);
+    setSetupMode("online");
+    setOnlineAction("host");
   };
 
-  const isContinueLocal = mode === 'multi' ? continueLocal : false;
+  const handleJoin = () => {
+    const trimmed = joinInput.trim();
+    if (!trimmed) return;
+    setIsJoining(true);
+    onJoinRoom(trimmed);
+  };
 
-  // Reusable player selector
-  const renderPlayerSelector = () => (
-    <>
-      <select
-        value={getCombinedValue("w")}
-        onChange={(e) => handleCombinedChange("w", e.target.value)}
-        className="btn--toggle"
-        style={{ display: 'inline-block' }}
-      >
-        <option value="human">Human</option>
-        <option value="ai">AI</option>
-      </select>
-      <span className="btn--toggle" style={{ paddingLeft: '8px', paddingRight: 0, borderRight: 'none', pointerEvents: 'none', color: 'var(--color-text-dim)' }}>White:</span>
+  const handleNewLocalFromMultiplayer = () => {
+    onStartNewGame(hasAi ? "ai" : "local", { players: localAiPlayers });
+    onOptionsOpenChange(false);
+  };
 
-      <select
-        value={getCombinedValue("b")}
-        onChange={(e) => handleCombinedChange("b", e.target.value)}
-        className="btn--toggle"
-        style={{ display: 'inline-block' }}
-      >
-        <option value="human">Human</option>
-        <option value="ai">AI</option>
-      </select>
-      <span className="btn--toggle" style={{ paddingLeft: '8px', paddingRight: 0, borderRight: 'none', pointerEvents: 'none', color: 'var(--color-text-dim)' }}>Black:</span>
+  const handleContinueLocally = () => {
+    const players = playerColor
+      ? {
+          w: playerColor === "w" ? "human" as const : "ai" as const,
+          b: playerColor === "b" ? "human" as const : "ai" as const,
+        }
+      : localAiPlayers;
 
-    </>
-  );
+    setLocalAiPlayers(players);
+    onContinueLocally?.({ players });
+    onOptionsOpenChange(false);
+  };
+
+  const multiplayerStatus =
+    peerLeft && !isReconnecting
+      ? "Opponent disconnected - game over"
+      : isReconnecting
+        ? "Opponent reconnecting..."
+        : !playerColor
+          ? isJoiner ? "Connecting..." : "Waiting for opponent..."
+          : `Online - ${playerColor === "w" ? "White" : "Black"}${latency != null ? ` (${latency}ms)` : ""}`;
+
+  const restartLabel =
+    rematchSent && rematchIncoming
+      ? "Restarting..."
+      : rematchIncoming
+        ? "Agree to Restart"
+        : rematchSent
+          ? "Restart requested"
+          : "Request Restart";
 
   return (
-    <div className="control-bar-wrapper" style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-
-      {/* Left dynamic breadcrumb group (always rendered) */}
-      <div className="toggle-group" style={{ margin: 0, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-        {effectiveMenuPath.length === 0 ? (
-          <button
-            className="btn--toggle"
-            onClick={() => pushMenu('new')}
-          >
-            New Game
-          </button>
-        ) : (
-          <>
-            {effectiveMenuPath.map((seg, idx) => {
-              const isLast = idx === effectiveMenuPath.length - 1;
-              const label = seg === 'new' ? 'New Game' : seg === 'local' ? 'Local' : seg === 'online' ? 'Online' : seg === 'host' ? 'Host' : 'Join';
-              return (
-                <span key={`${seg}-${idx}`}>
-                  {isLast ? (
-                    <span className={`btn--toggle ${isLast ? 'btn--toggle-active' : ''}`} style={{ pointerEvents: 'none' }}>{label}</span>
-                  ) : (
-                    <button
-                      className="btn--toggle"
-                      onClick={() => setMenuPath(effectiveMenuPath.slice(0, idx + 1))}
-                    >
-                      {label}
-                    </button>
-                  )}
-                  {!isLast && null}
-                </span>
-              );
-            })}
-
-            {/* Action area for the current (last) segment */}
-            {(() => {
-              const last = effectiveMenuPath[effectiveMenuPath.length - 1];
-              if (last === 'new') {
-                return (
-                  <>
-                    <button className="btn--toggle" onClick={() => pushMenu('local')}>Local Game</button>
-                    <button className="btn--toggle" onClick={() => pushMenu('online')}>Online Game</button>
-                  </>
-                );
-              }
-              if (last === 'local') {
-                return (
-                  <>
-                    {renderPlayerSelector()}
-                    {!localGameStarted && (
-                      <button className="btn--toggle" onClick={handleStartLocal}>Start</button>
-                    )}
-                    {localGameStarted && (localAiPlayers.w === 'ai' || localAiPlayers.b === 'ai') && (
-                      <button className="btn--toggle" onClick={onPauseResume}>{aiPaused ? 'Resume AI' : 'Pause AI'}</button>
-                    )}
-                  </>
-                );
-              }
-              if (last === 'online') {
-                return (
-                  <>
-                    <button className="btn--toggle" onClick={() => { pushMenu('host'); onStartNewGame('host'); }}>Host Game</button>
-                    <button className="btn--toggle" onClick={() => pushMenu('join')}>Join Game</button>
-                  </>
-                );
-              }
-              if (last === 'host') {
-                return (
-                  <>
-                    <span className="btn--toggle" onClick={handleCopyInvite} style={{ cursor: 'pointer' }}>Room: {roomId || '...'}</span>
-                    <button className="btn--toggle" onClick={handleCopyInvite}>{localLinkCopied ? 'Copied!' : 'Copy Link'}</button>
-                  </>
-                );
-              }
-              if (last === 'join') {
-                return (
-                  <>
-                    <input
-                      type="text"
-                      placeholder="Room Name"
-                      className="btn--toggle"
-                      style={{ minWidth: 0, border: 'none', borderRight: '2px solid var(--color-border-primary)', outline: 'none' }}
-                      value={joinInput}
-                      onChange={(e) => setJoinInput(e.target.value)}
-                    />
-                    <button
-                      className="btn--toggle"
-                      disabled={!joinInput.trim() || connected || isJoining}
-                      onClick={() => {
-                        setIsJoining(true);
-                        onJoinRoom(joinInput);
-                      }}
-                    >
-                      {isJoining ? 'Joining...' : connected ? 'Joined' : 'Join'}
-                    </button>
-                  </>
-                );
-              }
-              return null;
-            })()}
-          </>
-        )}
-      </div>
-
-      {/* Top Level Buttons */}
-      <div className="toggle-group control-top-level" style={{ margin: 0, display: 'flex', flexDirection: 'row' }}>
-        {isContinueLocal && (
-          <>
-            {renderPlayerSelector()}
-            <button className="btn--toggle btn--toggle-active" onClick={() => onContinueLocally?.({ players: localAiPlayers })}>Resume</button>
-          </>
-        )}
-
-        {mode === 'multi' && !isContinueLocal && (
-          <span className="btn--toggle" style={{ pointerEvents: 'none', fontWeight: 'bold' }}>
-            {peerLeft && !isReconnecting ? "Opponent disconnected – game over" :
-              isReconnecting ? "Opponent reconnecting..." :
-                !playerColor ? (isJoiner ? "Connecting..." : "Waiting for opponent...") :
-                  `Online – ${playerColor === 'w' ? 'White' : 'Black'} ${latency != null ? `(${latency}ms)` : ''}`
-            }
-          </span>
-        )}
-
-        {mode === 'multi' && connected && !peerLeft && !isReconnecting && (
-          <>
-            {!rematchSent && !rematchIncoming && (
-              <button className="btn--toggle" onClick={() => onRequestRematch?.()}>Request Restart</button>
-            )}
-            {rematchIncoming && !rematchSent && (
-              <button className="btn--toggle btn--toggle-active" onClick={() => onRequestRematch?.()}>Agree to Restart</button>
-            )}
-            {rematchSent && !rematchIncoming && (
-              <span className="btn--toggle" style={{ pointerEvents: 'none' }}>Restart requested</span>
-            )}
-            {rematchSent && rematchIncoming && (
-              <span className="btn--toggle btn--toggle-active" style={{ pointerEvents: 'none' }}>Restarting…</span>
-            )}
-          </>
-        )}
-
-        {mode === 'multi' && peerLeft && !isReconnecting && !isContinueLocal && (
-          <>
-            <button className="btn--toggle" onClick={onLeaveGame}>Leave Game</button>
-            <button className="btn--toggle btn--toggle-active" onClick={handleContinueLocallyClick} title="Continue playing against AI after opponent disconnects">Continue Locally</button>
-          </>
-        )}
-
-        {mode === 'multi' && (!peerLeft || isReconnecting) && !isContinueLocal && (
-          <button className="btn--toggle" onClick={onLeaveGame}>
-            Leave Game
-          </button>
-        )}
-
-        {hasSavedGame && !roomId && mode !== 'multi' && (
-          <button className="btn--toggle btn--toggle-active" onClick={handleResumeSavedGameClick}>
-            Resume Game
-          </button>
-        )}
-
-
+    <div className="control-shell">
+      <div className="toggle-group control-top-level">
+        <button
+          className={`btn--toggle ${optionsOpen ? "btn--toggle-active" : ""}`}
+          onClick={() => onOptionsOpenChange(!optionsOpen)}
+        >
+          New Game
+        </button>
         <button
           onClick={onUndo}
-          disabled={!canUndo || mode === 'multi'}
-          className={`btn--toggle ${!canUndo || mode === 'multi' ? 'btn--toggle-disabled' : ''}`}
-          title={mode === 'multi' ? "Undo not available in multiplayer games" : canUndo ? "Undo last move (Ctrl+Z/Cmd+Z)" : "No moves to undo"}
+          disabled={!canUndo || mode === "multi" || sessionState !== "active"}
+          className={`btn--toggle ${!canUndo || mode === "multi" || sessionState !== "active" ? "btn--toggle-disabled" : ""}`}
+          title={mode === "multi" ? "Undo not available in multiplayer games" : canUndo ? "Undo last move (Ctrl+Z/Cmd+Z)" : "No moves to undo"}
         >
           Undo
         </button>
         <button
           onClick={onSaveGame}
-          className={`btn--toggle ${linkCopied ? "btn--toggle-active" : ""}`}
+          disabled={!canSave || sessionState !== "active"}
+          className={`btn--toggle ${linkCopied ? "btn--toggle-active" : ""} ${!canSave || sessionState !== "active" ? "btn--toggle-disabled" : ""}`}
           title="Save position as shareable link (Ctrl+S/Cmd+S)"
         >
-          {linkCopied ? "✓ Copied!" : "Save Game"}
+          {linkCopied ? "Copied!" : "Save Game"}
         </button>
       </div>
 
+      {isSetupVisible && (
+        <div className="control-options-row">
+          {mode === "multi" && sessionState === "active" && (
+            <div className="toggle-group control-options-group">
+              <span className="btn--toggle control-status">{multiplayerStatus}</span>
+              <button
+                className={`btn--toggle ${rematchIncoming ? "btn--toggle-active" : ""}`}
+                onClick={onRequestRematch}
+                disabled={!connected || !!peerLeft || !!isReconnecting || rematchSent}
+              >
+                {restartLabel}
+              </button>
+              <button className="btn--toggle" onClick={handleNewLocalFromMultiplayer}>
+                Local Game
+              </button>
+              {peerLeft && !isReconnecting && (
+                <button className="btn--toggle" onClick={handleContinueLocally}>
+                  Continue Locally
+                </button>
+              )}
+              <button className="btn--toggle" onClick={handleHost}>
+                New Room
+              </button>
+              <button className="btn--toggle" onClick={onLeaveGame}>
+                Leave Room
+              </button>
+            </div>
+          )}
+
+          {mode !== "multi" && (
+            <>
+              <div className="toggle-group control-options-group">
+                <button
+                  className={`btn--toggle ${setupMode === "local" ? "btn--toggle-active" : ""}`}
+                  onClick={() => setSetupMode("local")}
+                >
+                  Local
+                </button>
+                <button
+                  className={`btn--toggle ${setupMode === "online" ? "btn--toggle-active" : ""}`}
+                  onClick={() => setSetupMode("online")}
+                >
+                  Online
+                </button>
+              </div>
+
+              {setupMode === "local" && (
+                <div className="toggle-group control-options-group">
+                  <span className="btn--toggle control-label">White</span>
+                  <select
+                    value={localAiPlayers.w}
+                    onChange={(e) => handlePlayerChange("w", e.target.value)}
+                    className="btn--toggle control-select"
+                  >
+                    <option value="human">Human</option>
+                    <option value="ai">AI</option>
+                  </select>
+                  <span className="btn--toggle control-label">Black</span>
+                  <select
+                    value={localAiPlayers.b}
+                    onChange={(e) => handlePlayerChange("b", e.target.value)}
+                    className="btn--toggle control-select"
+                  >
+                    <option value="human">Human</option>
+                    <option value="ai">AI</option>
+                  </select>
+                  <button className="btn--toggle btn--toggle-active" onClick={isLoadedPaused ? handleResume : handleStartLocal}>
+                    {isLoadedPaused ? "Resume" : "Start"}
+                  </button>
+                  {sessionState === "active" && hasAi && (
+                    <button className="btn--toggle" onClick={onPauseResume}>
+                      {aiPaused ? "Resume AI" : "Pause AI"}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {setupMode === "online" && (
+                <>
+                  <div className="toggle-group control-options-group">
+                    <button
+                      className={`btn--toggle ${onlineAction === "host" ? "btn--toggle-active" : ""}`}
+                      onClick={() => setOnlineAction("host")}
+                    >
+                      Host
+                    </button>
+                    <button
+                      className={`btn--toggle ${onlineAction === "join" ? "btn--toggle-active" : ""}`}
+                      onClick={() => setOnlineAction("join")}
+                    >
+                      Join
+                    </button>
+                  </div>
+
+                  {onlineAction === "host" && (
+                    <div className="toggle-group control-options-group">
+                      {roomId ? (
+                        <>
+                          <button className="btn--toggle" onClick={handleCopyInvite}>
+                            Room: {roomId}
+                          </button>
+                          <button className="btn--toggle" onClick={handleCopyInvite}>
+                            {localLinkCopied ? "Copied!" : "Copy Link"}
+                          </button>
+                        </>
+                      ) : (
+                        <button className="btn--toggle btn--toggle-active" onClick={handleHost}>
+                          Host Game
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {onlineAction === "join" && (
+                    <div className="toggle-group control-options-group">
+                      <input
+                        type="text"
+                        placeholder="Room Name"
+                        className="btn--toggle control-room-input"
+                        value={joinInput}
+                        onChange={(e) => setJoinInput(e.target.value)}
+                      />
+                      <button
+                        className="btn--toggle btn--toggle-active"
+                        disabled={!joinInput.trim() || connected || isJoining}
+                        onClick={handleJoin}
+                      >
+                        {isJoining ? "Joining..." : connected ? "Joined" : "Join"}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

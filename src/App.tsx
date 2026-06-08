@@ -12,7 +12,7 @@ import { isPromotionMove } from "./features/chess/utils/chessMoves";
 import { PromotionDialog } from "./features/chess/components/PromotionDialog";
 import { useAIPlayers } from "./features/ai/hooks/useAIPlayers";
 import { BoardCard } from "./features/chess/components/BoardCard";
-import { GameControlBar, type AIConfig } from "./features/controls/components/GameControlBar";
+import { GameControlBar, type AIConfig, type GameSessionState } from "./features/controls/components/GameControlBar";
 import { OpponentChoosingOverlay } from "./features/multiplayer/components/MultiplayerUI";
 import {
   getUltimateGameFromStorage,
@@ -101,18 +101,25 @@ export default function App() {
   const [linkCopied, setLinkCopied] = useState(false);
   const [isConfiguring, setIsConfiguring] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const [sessionState, setSessionState] = useState<GameSessionState>("idle");
+  const [optionsOpen, setOptionsOpen] = useState(true);
+  const [winnerOverlayDismissed, setWinnerOverlayDismissed] = useState(false);
 
   useEffect(() => {
     const rulesSeenKey = "ultimate-chess-rules-seen";
 
-    try {
-      if (window.localStorage.getItem(rulesSeenKey)) return;
+    const t = window.setTimeout(() => {
+      try {
+        if (window.localStorage.getItem(rulesSeenKey)) return;
 
-      window.localStorage.setItem(rulesSeenKey, "true");
-      setShowRules(true);
-    } catch {
-      setShowRules(true);
-    }
+        window.localStorage.setItem(rulesSeenKey, "true");
+        setShowRules(true);
+      } catch {
+        setShowRules(true);
+      }
+    }, 0);
+
+    return () => window.clearTimeout(t);
   }, []);
 
   // AI config
@@ -137,6 +144,9 @@ export default function App() {
     deleteUltimateGameFromStorage();
     setRematchSent(false);
     setRematchIncoming(false);
+    setSessionState("active");
+    setOptionsOpen(false);
+    setWinnerOverlayDismissed(false);
   }, [resetAllBoards]);
 
   const onRemoteSetup = useCallback((setup: GameStateSnapshot) => {
@@ -172,6 +182,9 @@ export default function App() {
         }
       );
       gameStartedAt.current = Date.now();
+      setSessionState("active");
+      setOptionsOpen(false);
+      setWinnerOverlayDismissed(false);
     } catch {
       // Fallback: reset if applying snapshot fails
       resetAllBoards();
@@ -273,6 +286,9 @@ export default function App() {
       deleteUltimateGameFromStorage();
       // clear UI state
       const t = window.setTimeout(() => {
+        setSessionState("active");
+        setOptionsOpen(false);
+        setWinnerOverlayDismissed(false);
         setRematchSent(false);
         setRematchIncoming(false);
       }, 50);
@@ -283,7 +299,6 @@ export default function App() {
   }, [rematchSent, rematchIncoming, isJoiner, sendReset, resetAllBoards]);
 
   const [aiPaused, setAiPaused] = useState(false);
-  const [hasSavedGame, setHasSavedGame] = useState(false);
   const hasAI = mode !== "multi" && (aiPlayers.w === "ai" || aiPlayers.b === "ai");
 
   useEffect(() => {
@@ -293,6 +308,18 @@ export default function App() {
       return () => clearTimeout(t);
     }
   }, [hasAI, aiPaused]);
+
+  useEffect(() => {
+    if (ultimateWinner) {
+      const t = window.setTimeout(() => {
+        setSessionState("finished");
+        setOptionsOpen(true);
+        setWinnerOverlayDismissed(false);
+      }, 0);
+      return () => window.clearTimeout(t);
+    }
+    return undefined;
+  }, [ultimateWinner]);
 
   // ── AI players (simple config)
   // Defaults: white human, black AI (single-player only). Change as desired.
@@ -310,18 +337,10 @@ export default function App() {
     shouldShowModal,
     chooseBoard,
     makeMoveOnBoard,
-    isPaused: isConfiguring || aiPaused,
+    isPaused: sessionState !== "active" || isConfiguring || aiPaused,
   });
 
   useEffect(() => {
-    if (storageEnabled) {
-      const saved = getUltimateGameFromStorage();
-      if (saved) {
-        const t = window.setTimeout(() => setHasSavedGame(true), 0);
-        return () => clearTimeout(t);
-      }
-    }
-
     // Load from URL hash if present
     const hash = window.location.hash.slice(1); // Remove the '#'
     if (hash) {
@@ -339,8 +358,52 @@ export default function App() {
           fenState.requiredBoard
         );
         gameStartedAt.current = Date.now();
+        const t = window.setTimeout(() => {
+          setSessionState("loaded-paused");
+          setOptionsOpen(true);
+          setWinnerOverlayDismissed(false);
+        }, 0);
+        return () => window.clearTimeout(t);
       }
     }
+
+    if (storageEnabled) {
+      const saved = getUltimateGameFromStorage();
+      if (saved) {
+        const savedPendingChecks: Partial<Record<BoardName, "w" | "b">> = {};
+        for (const pc of saved.routing.pendingChecks) {
+          savedPendingChecks[pc.board] = pc.color === "white" ? "w" : "b";
+        }
+        loadGame(
+          saved.boards.map((b) => ({
+            name: b.name,
+            fen: b.fen,
+            status: b.status as BoardStatus,
+            winner:
+              b.winner === "white" ? "w" : b.winner === "black" ? "b" : null,
+          })),
+          saved.routing.currentPlayer,
+          savedPendingChecks,
+          saved.routing.currentBoard,
+          {
+            routingMode: "normal",
+            decisionMaker: null,
+            shouldShowModal: false,
+            loserPicksWinner: null,
+            choiceBoards: [],
+          }
+        );
+        gameStartedAt.current = saved.meta.startedAt;
+        const t = window.setTimeout(() => {
+          setAiPlayers({ w: saved.meta.whitePlayer, b: saved.meta.blackPlayer });
+          setSessionState("loaded-paused");
+          setOptionsOpen(true);
+          setWinnerOverlayDismissed(false);
+        }, 0);
+        return () => window.clearTimeout(t);
+      }
+    }
+    return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -348,7 +411,7 @@ export default function App() {
 
   // ── Persist game after every move ────────────────────────────────────────
   useEffect(() => {
-    if (!storageEnabled || moveHistory.length === 0 || ultimateWinner) return;
+    if (!storageEnabled || sessionState !== "active" || moveHistory.length === 0 || ultimateWinner) return;
 
     const currentBoards = boardsRef.current;
     const gameToSave: UltimateCurrentGame = {
@@ -390,7 +453,7 @@ export default function App() {
     };
 
     saveUltimateGameToStorage(gameToSave);
-  }, [storageEnabled, globalTurn, pendingChecks, moveHistory.length, ultimateWinner, requiredBoard]);
+  }, [storageEnabled, sessionState, globalTurn, pendingChecks, moveHistory.length, ultimateWinner, requiredBoard]);
 
   // ── Storage handlers ───────────────────────────────────────────────────────
   // NOTE: Storage handlers are commented out but available for future UI controls
@@ -409,6 +472,7 @@ export default function App() {
   // ── Move handlers ─────────────────────────────────────────────────────────
   const canMoveOnBoard = useCallback(
     (boardName: BoardName): boolean => {
+      if (sessionState !== "active") return false;
       if (ultimateWinner) return false;
       if (routingMode === "castling-choice" || routingMode === "loser-picks") return false;
       // In multiplayer, only allow moves once we've been assigned a color
@@ -418,7 +482,7 @@ export default function App() {
       }
       return availableBoards.includes(boardName);
     },
-    [ultimateWinner, routingMode, availableBoards, mode, playerColor, connected, peerLeft, isReconnecting, globalTurn]
+    [sessionState, ultimateWinner, routingMode, availableBoards, mode, playerColor, connected, peerLeft, isReconnecting, globalTurn]
   );
 
   const onPieceDrop = useCallback(
@@ -533,7 +597,16 @@ export default function App() {
     gameStartedAt.current = Date.now();
     deleteUltimateGameFromStorage();
     setAiPaused(false);
+    setSessionState("active");
+    setOptionsOpen(false);
+    setWinnerOverlayDismissed(false);
   }, [resetAllBoards]);
+
+  const handleResumeLoadedGame = useCallback(() => {
+    setSessionState("active");
+    setOptionsOpen(false);
+    setWinnerOverlayDismissed(false);
+  }, []);
 
   const handleUndo = useCallback(() => {
     const success = undo();
@@ -546,22 +619,21 @@ export default function App() {
 
   const handleConfigChange = useCallback((configuring: boolean) => {
     setIsConfiguring(configuring);
-    if (configuring) {
-      resetAllBoards();
-      deleteUltimateGameFromStorage();
-    }
-  }, [resetAllBoards]);
+  }, []);
 
   // ── Multiplayer ────────────────────────────────────────────────────────────
   const handleHostOnline = useCallback((resetGame = false) => {
     // Host with random color assignment
+    cancelMultiplayer();
     hostMultiplayer(undefined, resetGame);
-    if (resetGame) {
-      resetAllBoards();
-      gameStartedAt.current = Date.now();
-      deleteUltimateGameFromStorage();
-    }
-  }, [hostMultiplayer, resetAllBoards]);
+    resetAllBoards();
+    gameStartedAt.current = Date.now();
+    deleteUltimateGameFromStorage();
+    setAiPaused(false);
+    setSessionState("active");
+    setOptionsOpen(true);
+    setWinnerOverlayDismissed(false);
+  }, [cancelMultiplayer, hostMultiplayer, resetAllBoards]);
 
   const handleContinueLocally = useCallback((config: AIConfig) => {
     // Exit multiplayer and continue in single-player mode
@@ -571,11 +643,18 @@ export default function App() {
       setAiSkill(config.skills);
     }
     // Don't delete storage, let it be saved on next move
+    setSessionState("active");
+    setOptionsOpen(false);
+    setWinnerOverlayDismissed(false);
   }, [cancelMultiplayer]);
 
   const handleJoinGame = useCallback((rId: string) => {
+    cancelMultiplayer();
+    setSessionState("active");
+    setOptionsOpen(true);
+    setWinnerOverlayDismissed(false);
     joinMultiplayer(rId);
-  }, [joinMultiplayer]);
+  }, [cancelMultiplayer, joinMultiplayer]);
 
   const requestRematch = useCallback(() => {
     if (!sendRematchRequest) return;
@@ -588,6 +667,9 @@ export default function App() {
         resetAllBoards();
         gameStartedAt.current = Date.now();
         deleteUltimateGameFromStorage();
+        setSessionState("active");
+        setOptionsOpen(false);
+        setWinnerOverlayDismissed(false);
         setRematchSent(false);
         setRematchIncoming(false);
       }, 50);
@@ -641,7 +723,9 @@ export default function App() {
       // Ctrl+S or Cmd+S for save
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
-        handleCopyLink();
+        if (sessionState === "active" && moveHistory.length > 0) {
+          handleCopyLink();
+        }
       }
       // Close rules on Escape
       if (e.key === 'Escape') {
@@ -651,7 +735,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canUndo, handleUndo, handleCopyLink]);
+  }, [canUndo, handleUndo, handleCopyLink, sessionState, moveHistory.length]);
 
   // Clear rematch state when leaving multiplayer or when room changes
   useEffect(() => {
@@ -680,38 +764,15 @@ export default function App() {
   }
 
   const isMultiplayerDisabled = mode === "multi" && (!connected || peerLeft || isReconnecting || !playerColor);
+  const isBoardInteractionDisabled = sessionState !== "active" || isMultiplayerDisabled || !!ultimateWinner;
+  const canSaveGame = sessionState === "active" && moveHistory.length > 0;
 
-  const handleResumeSavedGame = useCallback(() => {
-    const saved = getUltimateGameFromStorage();
-    if (saved) {
-      const savedPendingChecks: Partial<Record<BoardName, "w" | "b">> = {};
-      for (const pc of saved.routing.pendingChecks) {
-        savedPendingChecks[pc.board] = pc.color === "white" ? "w" : "b";
-      }
-      loadGame(
-        saved.boards.map((b) => ({
-          name: b.name,
-          fen: b.fen,
-          status: b.status as BoardStatus,
-          winner:
-            b.winner === "white" ? "w" : b.winner === "black" ? "b" : null,
-        })),
-        saved.routing.currentPlayer,
-        savedPendingChecks,
-        saved.routing.currentBoard,
-        {
-          routingMode: "normal",
-          decisionMaker: null,
-          shouldShowModal: false,
-          loserPicksWinner: null,
-          choiceBoards: [],
-        }
-      );
-      gameStartedAt.current = saved.meta.startedAt;
-      setAiPlayers({ w: "human", b: "human" }); // default to human vs human
-      setHasSavedGame(false); // remove the button
-    }
-  }, [loadGame]);
+  const handleLeaveRoom = useCallback(() => {
+    cancelMultiplayer();
+    setSessionState("idle");
+    setOptionsOpen(true);
+    setWinnerOverlayDismissed(false);
+  }, [cancelMultiplayer]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -744,6 +805,10 @@ export default function App() {
         <div className="ultimate-control-row">
           <GameControlBar
             linkCopied={linkCopied}
+            sessionState={sessionState}
+            optionsOpen={optionsOpen}
+            onOptionsOpenChange={setOptionsOpen}
+            onResumeLoadedGame={handleResumeLoadedGame}
             onStartNewGame={(newGameMode, config) => {
               if (newGameMode === "local" || newGameMode === "ai") {
                 cancelMultiplayer();
@@ -780,15 +845,14 @@ export default function App() {
             playerColor={playerColor}
             latency={latency}
             onConfigChange={handleConfigChange}
-            canUndo={canUndo()}
+            canUndo={canUndo() && sessionState === "active"}
             onUndo={handleUndo}
-            hasSavedGame={hasSavedGame}
-            onResumeSavedGame={handleResumeSavedGame}
+            canSave={canSaveGame}
             aiPaused={aiPaused}
             onPauseResume={() => setAiPaused(p => !p)}
             peerLeft={peerLeft}
             isReconnecting={isReconnecting}
-            onLeaveGame={cancelMultiplayer}
+            onLeaveGame={handleLeaveRoom}
             onContinueLocally={handleContinueLocally}
             rematchSent={rematchSent}
             rematchIncoming={rematchIncoming}
@@ -799,7 +863,26 @@ export default function App() {
 
       {/* ── Main ── */}
       <div className="ultimate-main">
-        <div className="ultimate-boards-container">
+        <div
+          className="ultimate-boards-container"
+          onClick={() => {
+            if (ultimateWinner && !winnerOverlayDismissed) {
+              setWinnerOverlayDismissed(true);
+            }
+          }}
+        >
+          {ultimateWinner && !winnerOverlayDismissed && (
+            <button
+              type="button"
+              className="ultimate-winner-overlay"
+              onClick={() => setWinnerOverlayDismissed(true)}
+            >
+              <span className="ultimate-winner-overlay__title">
+                {ultimateWinner === "w" ? "White wins" : "Black wins"}
+              </span>
+              <span className="ultimate-winner-overlay__hint">Click to view the boards</span>
+            </button>
+          )}
           {/* Board grid */}
           <div className="ultimate-boards-grid">
             {BOARD_NAMES.map((boardName) => (
@@ -814,11 +897,11 @@ export default function App() {
                 boardWinner={getBoardWinner(boardName)}
                 globalTurn={globalTurn}
                 playerColor={displayPlayerColor}
-                isDisabled={isMultiplayerDisabled}
+                isDisabled={isBoardInteractionDisabled}
                 squareStyles={allSquareStyles[boardName]}
                 onPieceDrop={onPieceDrop}
                 onSquareClick={onSquareClick}
-                isSelectableForChoice={shouldShowModal && !isAIDecisionMaker && choiceBoards.includes(boardName)}
+                isSelectableForChoice={sessionState === "active" && shouldShowModal && !isAIDecisionMaker && choiceBoards.includes(boardName)}
                 onBoardChoice={handleBoardChoice}
                 decisionMaker={decisionMaker}
               />
