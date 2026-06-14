@@ -113,7 +113,7 @@ export class UltimateChessGame {
   private decisionMaker: "w" | "b" | null = null;  // Who decides the next board
   private shouldShowModal: boolean = false;  // Whether to show a modal
   private loserPicksWinner: "w" | "b" | null = null;  // For loser-picks modal
-  private ultimateWinner: "w" | "b" | null = null;
+  private ultimateWinner: "w" | "b" | "draw" | null = null;
   private choiceBoards: BoardName[] = [];  // Boards available for selection during choice modes
   private historyStack: UltimateChessSnapshot[] = [];  // Stack for undo functionality
 
