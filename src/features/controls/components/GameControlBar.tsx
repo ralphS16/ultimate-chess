@@ -71,12 +71,13 @@ export function GameControlBar({
   rematchIncoming,
   onRequestRematch,
 }: GameControlBarProps) {
-  const [setupMode, setSetupMode] = useState<"local" | "online">("local");
-  const [onlineAction, setOnlineAction] = useState<"host" | "join">("host");
+  const urlRoom = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("room") : null;
+  const [setupMode, setSetupMode] = useState<"local" | "online">(() => (urlRoom ? "online" : "local"));
+  const [onlineAction, setOnlineAction] = useState<"host" | "join">(() => (urlRoom ? "join" : "host"));
   const [localAiPlayers, setLocalAiPlayers] = useState<{ w: "human" | "ai"; b: "human" | "ai" }>(
     () => aiPlayers ?? { w: "human", b: "human" }
   );
-  const [joinInput, setJoinInput] = useState("");
+  const [joinInput, setJoinInput] = useState(() => urlRoom ?? "");
   const [localLinkCopied, setLocalLinkCopied] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
 
@@ -103,6 +104,9 @@ export function GameControlBar({
     }
     return undefined;
   }, [connected]);
+
+  // initialization from URL handled in useState initializers to avoid
+  // synchronous setState calls within effects (eslint: react-hooks/set-state-in-effect)
 
   const handleCopyInvite = useCallback(() => {
     if (!roomId) return;
@@ -213,6 +217,11 @@ export function GameControlBar({
           {mode === "multi" && sessionState === "active" && (
             <div className="toggle-group control-options-group">
               <span className="btn--toggle control-status">{multiplayerStatus}</span>
+              {!isJoiner && roomId && (
+                <button className="btn--toggle" onClick={handleCopyInvite} title="Copy invite link">
+                  {localLinkCopied ? "Copied!" : `Room: ${roomId}`}
+                </button>
+              )}
               <button
                 className={`btn--toggle ${rematchIncoming ? "btn--toggle-active" : ""}`}
                 onClick={onRequestRematch}

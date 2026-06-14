@@ -99,13 +99,14 @@ const Board = memo(function Board({
         } ${isCapturedBlack ? "ultimate-board--captured-black" : ""} ${hasPendingCheck && !isFinished ? "ultimate-board--pending-check" : ""
         } ${isFinished ? "ultimate-board--finished" : ""} ${isSelectableForChoice ? "ultimate-board--selectable" : ""}`}
       style={{
-        borderColor: isAvailable && !isDisabled ? BOARD_COLORS[boardName] : undefined,
+        borderColor: !isSelectableForChoice && isAvailable && !isDisabled
+          ? BOARD_COLORS[boardName]
+          : undefined,
         opacity: isDisabled ? 0.5 : (isAvailable ? 1 : 0.6),
         pointerEvents: isDisabled ? 'none' : undefined,
         filter: isDisabled ? 'grayscale(0.8)' : undefined,
         position: 'relative',
         cursor: isSelectableForChoice && !isDisabled ? 'pointer' : undefined,
-        boxShadow: isSelectableForChoice && !isDisabled ? 'inset 0 0 0 4px rgba(100, 200, 100, 0.8)' : undefined,
       }}
       onClick={handleBoardClick}
     >

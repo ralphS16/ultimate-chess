@@ -98,11 +98,9 @@ export function createStockfishEngine(enabled = true): ChessEngine {
   };
 
   const chooseBoard = (availableBoards: string[]): Promise<string | null> => {
-    // For now, the Stockfish engine chooses a random board
-    // Future engines could implement different strategies
+    // Board routing is handled in useAIPlayers via tactical search.
     if (availableBoards.length === 0) return Promise.resolve(null);
-    const randomIndex = Math.floor(Math.random() * availableBoards.length);
-    return Promise.resolve(availableBoards[randomIndex]);
+    return Promise.resolve(availableBoards[0]);
   };
 
   return { init, getBestMove, chooseBoard, dispose };

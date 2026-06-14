@@ -32,6 +32,7 @@ export function useMultiplayer({
   onRemoteBoardChoice,
   getFen,
   getHasMoves,
+  onAutoJoinFromUrl,
 }: {
   onRemoteMove: (boardName: string, from: string, to: string, promotion?: string) => boolean;
   onRemoteReset: () => void;
@@ -51,6 +52,8 @@ export function useMultiplayer({
   getFen: () => GameStateSnapshot;
   /** Returns whether the current game state has moves. */
   getHasMoves: () => boolean;
+  /** Called when auto-joining a room from a ?room= URL on page load. */
+  onAutoJoinFromUrl?: (roomId: string, asHost: boolean) => void;
 }) {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [playerColor, setPlayerColor] = useState<"w" | "b" | null>(null);
@@ -107,6 +110,7 @@ export function useMultiplayer({
   const onRemoteBoardChoiceRef = useRef(onRemoteBoardChoice);
   const getFenRef = useRef(getFen);
   const getHasMovesRef = useRef(getHasMoves);
+  const onAutoJoinFromUrlRef = useRef(onAutoJoinFromUrl);
 
   // Update refs when callbacks change
   useEffect(() => {
@@ -120,6 +124,7 @@ export function useMultiplayer({
     onRemoteBoardChoiceRef.current = onRemoteBoardChoice;
     getFenRef.current = getFen;
     getHasMovesRef.current = getHasMoves;
+    onAutoJoinFromUrlRef.current = onAutoJoinFromUrl;
   }, [
     onRemoteMove,
     onRemoteReset,
@@ -131,6 +136,7 @@ export function useMultiplayer({
     onRemoteBoardChoice,
     getFen,
     getHasMoves,
+    onAutoJoinFromUrl,
   ]);
 
   const leaveCurrentRoom = useCallback(() => {
@@ -531,7 +537,8 @@ export function useMultiplayer({
       } catch {
         // sessionStorage may be unavailable
       }
-      startMultiplayer(rId, asHost);
+      startMultiplayer(rId, asHost, false);
+      onAutoJoinFromUrlRef.current?.(rId, asHost);
     }
     // We intentionally omit startMultiplayer from deps and leaveCurrentRoom()
     // from cleanup so React 18 Strict Mode double-invokes don't disconnect the

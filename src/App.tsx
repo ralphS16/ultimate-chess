@@ -244,6 +244,12 @@ export default function App() {
     return moveHistory.length > 0;
   }, [moveHistory]);
 
+  const onAutoJoinFromUrl = useCallback(() => {
+    setSessionState("active");
+    setOptionsOpen(true);
+    setWinnerOverlayDismissed(false);
+  }, []);
+
   const {
     sendMove,
     sendBoardChoice,
@@ -271,6 +277,7 @@ export default function App() {
       onRemoteBoardChoice,
       getFen,
       getHasMoves,
+      onAutoJoinFromUrl,
     });
 
   // When both sides have requested a rematch, the host should broadcast a
@@ -333,6 +340,7 @@ export default function App() {
     requiredBoard,
     availableBoards,
     choiceBoards,
+    pendingChecks,
     decisionMaker,
     shouldShowModal,
     chooseBoard,
@@ -872,7 +880,7 @@ export default function App() {
               onClick={() => setWinnerOverlayDismissed(true)}
             >
               <span className="ultimate-winner-overlay__title">
-                {ultimateWinner === "w" ? "White wins" : "Black wins"}
+                {ultimateWinner === "w" ? "White wins" : ultimateWinner === "b" ? "Black wins" : "Draw"}
               </span>
               <span className="ultimate-winner-overlay__hint">Click to view the boards</span>
             </button>
@@ -979,7 +987,7 @@ export default function App() {
               </ul>
               <hr style={{ borderTop: "2px solid var(--color-border-primary)", borderBottom: "none", margin: "0.5rem 0" }} />
               <p style={{ fontSize: "0.85rem", fontStyle: "italic" }}>
-                <strong>NB:</strong> This is a work in progress and it was completely vibecoded, so there will be bugs. The multiplayer functionality is implemented via peer-to-peer WebRTC, so it does not use any server that stores your data after connection is established. The AI uses the stockfish engine (run locally via Stockfish.js) on each board independently, so it does not understand how the boards are interlinked and can easily be beaten.
+                <strong>NB:</strong> This is a work in progress and it was completely vibecoded, so there will be bugs. The multiplayer functionality is implemented via peer-to-peer WebRTC, so it does not use any server that stores your data after connection is established. The AI uses the stockfish engine (run locally via Stockfish.js) on each board independently, so it does not understand how the boards are interlinked although it has a minimal logic for picking the board to play on when it has a choice.
               </p>
             </div>
             <button className="btn btn--primary" onClick={() => setShowRules(false)}>Close</button>

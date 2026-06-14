@@ -1,8 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useMemo } from "react";
 import type { BoardName } from "../../chess/types/boardTypes";
 import type { MoveResult } from "../../chess/game/ultimateChess";
 import { createStockfishEngine } from "../engines/stockfishEngine";
 import type { ChessEngine } from "../engines/types";
+import { findTacticalBoardMove, pickBoardForOpponent } from "../utils/tacticalBoardChoice";
 
 type PlayerKind = "human" | "ai";
 
@@ -16,6 +17,7 @@ interface UseAIPlayersOptions {
   requiredBoard: BoardName | null;
   availableBoards: BoardName[];
   choiceBoards: BoardName[];
+  pendingChecks: Partial<Record<BoardName, "w" | "b">>;
   // AI decision making for board selection
   decisionMaker: "w" | "b" | null;
   shouldShowModal: boolean;
@@ -46,6 +48,7 @@ export function useAIPlayers(opts: UseAIPlayersOptions) {
     requiredBoard,
     availableBoards,
     choiceBoards,
+      pendingChecks,
     decisionMaker,
     shouldShowModal,
     chooseBoard,
@@ -111,33 +114,66 @@ export function useAIPlayers(opts: UseAIPlayersOptions) {
     return { from, to, promotion };
   };
 
-  // AI board selection: when AI is the decisionMaker, ask the engine to choose
+  // AI board selection for modal routing (castling-choice, loser-picks, etc.)
   useEffect(() => {
-    // Don't run AI in multiplayer local-client mode or when paused.
     if (mode === "multi" || isPaused) return;
 
-    // Use choiceBoards if available (during castling-choice, loser-picks), otherwise fall back to availableBoards
     const boardsToChooseFrom = choiceBoards.length > 0 ? choiceBoards : availableBoards;
-    
-    // Only proceed if there's a modal showing and we have boards to choose from
     if (!shouldShowModal || boardsToChooseFrom.length === 0) return;
-
-    // Only proceed if there's a decision maker and it's an AI
     if (!decisionMaker || players[decisionMaker] !== "ai") return;
 
-    // Use any available engine to make the board choice decision
-    const engine = enginesRef.current[boardsToChooseFrom[0]];
-    if (!engine) return;
+    const candidates = boardsToChooseFrom
+      .filter((name): name is BoardName => Boolean(boards[name]?.fen))
+      .map((name) => ({ boardName: name, fen: boards[name].fen }));
 
-    // Ask the engine to choose a board
-    engine.chooseBoard(boardsToChooseFrom).then((chosenBoard) => {
-      if (chosenBoard) {
-        chooseBoard(chosenBoard as BoardName);
+    if (candidates.length === 0) return;
+
+    // When the AI is also the player to move on the candidate boards, prefer tactics.
+    if (decisionMaker === globalTurn) {
+      const tactical = findTacticalBoardMove(candidates, decisionMaker);
+      if (tactical) {
+        chooseBoard(tactical.boardName as BoardName);
+        makeMoveOnBoard(
+          tactical.boardName as BoardName,
+          tactical.from,
+          tactical.to,
+          tactical.promotion,
+        );
+        return;
       }
-    });
-  }, [mode, shouldShowModal, decisionMaker, players, choiceBoards, availableBoards, chooseBoard, isPaused]);
+      // No tactical found — if king board available the tactical helper may
+      // return a king fallback; otherwise fall through to default choice.
+    } else {
+      // AI choosing for the opponent — pick a board using heuristics that
+      // constrain the opponent where possible.
+      const pick = pickBoardForOpponent(candidates, decisionMaker, pendingChecks);
+      if (pick) {
+        chooseBoard(pick as BoardName);
+        return;
+      }
+    }
 
-  // Derive a stable key for the target board's FEN to avoid JSON.stringify in deps
+    chooseBoard(boardsToChooseFrom[0] as BoardName);
+  }, [
+    mode,
+    shouldShowModal,
+    decisionMaker,
+    players,
+    choiceBoards,
+    availableBoards,
+    chooseBoard,
+    makeMoveOnBoard,
+    boards,
+    pendingChecks,
+    globalTurn,
+    isPaused,
+  ]);
+
+  const candidateBoardNames = useMemo(() => (requiredBoard ? [requiredBoard] : availableBoards), [requiredBoard, availableBoards]);
+  const candidateFenKey = useMemo(
+    () => candidateBoardNames.map((name) => `${name}:${boards[name]?.fen ?? ""}`).join("|"),
+    [candidateBoardNames, boards]
+  );
   const targetBoard = requiredBoard ?? availableBoards[0] ?? null;
   const targetBoardFen = targetBoard ? boards[targetBoard]?.fen : null;
 
@@ -147,6 +183,28 @@ export function useAIPlayers(opts: UseAIPlayersOptions) {
 
     const side = globalTurn;
     if (players[side] !== "ai") return;
+
+    const candidates = candidateBoardNames
+      .filter((name): name is BoardName => Boolean(boards[name]?.fen))
+      .map((name) => ({ boardName: name, fen: boards[name].fen }));
+
+    if (candidates.length === 0) return;
+
+    const tactical = findTacticalBoardMove(candidates, side);
+    if (tactical) {
+      const tacticalBoard = tactical.boardName as BoardName;
+      const key = `${side}:tactical:${tacticalBoard}:${boards[tacticalBoard]?.fen}:${tactical.from}${tactical.to}${tactical.promotion ?? ""}`;
+      if (inFlightRef.current[key]) return;
+      inFlightRef.current[key] = true;
+      makeMoveOnBoard(
+        tacticalBoard,
+        tactical.from,
+        tactical.to,
+        tactical.promotion,
+      );
+      inFlightRef.current[key] = false;
+      return;
+    }
 
     if (!targetBoard || !targetBoardFen) return;
 
@@ -184,7 +242,20 @@ export function useAIPlayers(opts: UseAIPlayersOptions) {
       cancelled = true;
       currentInFlight[key] = false;
     };
-  }, [mode, players, globalTurn, targetBoard, targetBoardFen, playerColor, skillLevel, makeMoveOnBoard, isPaused]);
+  }, [
+    mode,
+    players,
+    globalTurn,
+    targetBoard,
+    targetBoardFen,
+    candidateBoardNames,
+    candidateFenKey,
+    boards,
+    playerColor,
+    skillLevel,
+    makeMoveOnBoard,
+    isPaused,
+  ]);
 
   // The hook manages engines internally; no values are returned to avoid
   // accessing refs during render.

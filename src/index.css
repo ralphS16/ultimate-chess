@@ -1393,6 +1393,17 @@ textarea {
   border-color: var(--color-border-primary);
 }
 
+.ultimate-board--selectable {
+  border-width: 4px;
+  border-color: rgba(100, 200, 100, 0.8);
+}
+
+@media (max-width: 600px) {
+  .ultimate-board--selectable {
+    border-width: 3px;
+  }
+}
+
 .ultimate-board__header {
   display: flex;
   align-items: center;

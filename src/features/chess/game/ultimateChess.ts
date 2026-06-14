@@ -46,7 +46,7 @@ export interface UltimateChessSnapshot {
   decisionMaker: "w" | "b" | null;  // Who decides the next board (null if auto-decided)
   shouldShowModal: boolean;  // Whether to show a board selection modal
   loserPicksWinner: "w" | "b" | null;  // For loser-picks modal
-  ultimateWinner: "w" | "b" | null;
+  ultimateWinner: "w" | "b" | "draw" | null;
   availableBoards: BoardName[];
   choiceBoards: BoardName[];  // Boards available for selection during choice modes (castling-choice, loser-picks)
 }
@@ -402,7 +402,8 @@ export class UltimateChessGame {
     this.moveHistory = [];
     this.moveCounter = 1;
     this.capturedBoards = this.computeCapturedBoards();
-    this.ultimateWinner = this.boards["king"].status === "won-white" ? "w" : this.boards["king"].status === "won-black" ? "b" : null;
+    const kingStatus = this.boards["king"].status;
+    this.ultimateWinner = kingStatus === "won-white" ? "w" : kingStatus === "won-black" ? "b" : kingStatus === "draw" ? "draw" : null;
     this.historyStack = []; // Clear history stack when loading a game
   }
 
@@ -450,7 +451,7 @@ export class UltimateChessGame {
       this.capturedBoards.black.push(boardName);
     }
 
-    if (boardName === "king" && winner !== null && winner !== "draw") {
+    if (boardName === "king" && winner !== null) {
       this.ultimateWinner = winner;
     }
   }

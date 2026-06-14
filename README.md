@@ -17,4 +17,4 @@ There are four additional rules governing special situations:
 
 ---
 
-**NB:** *This is a work in progress and it was completely vibecoded, so there will be bugs. The multiplayer functionality is implemented via peer-to-peer WebRTC, so it does not use any server that stores your data after connection is established. The AI uses the stockfish engine (run locally via Stockfish.js) on each board independently, so it does not understand how the boards are interlinked and can easily be beaten.*
+**NB:** *This is a work in progress and it was completely vibecoded, so there will be bugs. The multiplayer functionality is implemented via peer-to-peer WebRTC, so it does not use any server that stores your data after connection is established. The AI uses the stockfish engine (run locally via Stockfish.js) on each board independently, so it does not understand how the boards are interlinked although it has a minimal logic for picking the board to play on when it has a choice.*
