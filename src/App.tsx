@@ -983,7 +983,7 @@ export default function App() {
                 </ul>
                 </li>
                 <li>When a player castles, they may choose whether the opponent is routed to the King board or the Rook board. The rules above may then apply to the chosen board (sometimes automatically).</li>
-                <li>When a pawn reaches the final rank and is promoted, the move still counts as a pawn move for the purpose of determining the next board. (I write this now because it might change later.)</li>
+                <li>If a player's move results in a position where the opponent has no available boards to play on, the game is a draw. This can happen if the player's move ended a game while they are in check in all the other remaining boards.</li>
               </ul>
               <hr style={{ borderTop: "2px solid var(--color-border-primary)", borderBottom: "none", margin: "0.5rem 0" }} />
               <p style={{ fontSize: "0.85rem", fontStyle: "italic" }}>

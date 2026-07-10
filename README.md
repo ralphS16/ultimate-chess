@@ -13,7 +13,7 @@ There are four additional rules governing special situations:
   - If they won or drew that board, they may choose any other valid board.
   - If they lost that board, their opponent chooses a valid board for them to play on.
 - When a player castles, they may choose whether the opponent is routed to the King board or the Rook board. The rules above may then apply to the chosen board (sometimes automatically).
-- When a pawn reaches the final rank and is promoted, the move still counts as a pawn move for the purpose of determining the next board. (I write this now because it might change later.)
+- If a player's move results in a position where the opponent has no available boards to play on, the game is a draw. This can happen if the player's move ended a game while they are in check in all the remaining board.
 
 ---
 

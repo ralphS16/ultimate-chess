@@ -497,6 +497,20 @@ export class UltimateChessGame {
     return activeBoards.filter((name) => this.pendingChecks[name] !== getNextPlayer(player));
   }
 
+  private checkBlockedState(nextPlayer: "w" | "b"): void {
+    const activeBoards = BOARD_NAMES.filter(
+      (name) => this.boards[name].status === "active"
+    );
+
+    // If opponent has no available boards to play on, current player draws
+    if (activeBoards.length > 0) {
+      const availableForNext = this.getAvailableBoardsForPlayer(nextPlayer);
+      if (availableForNext.length === 0) {
+        this.ultimateWinner = "draw";
+      }
+    }
+  }
+
   private updateRoutingAfterMove(
     fromBoard: BoardName,
     movedPieceType: string | null,
@@ -596,6 +610,7 @@ export class UltimateChessGame {
         if (availableForOpponent.length === 0) {
           this.routingMode = "normal";
           this.requiredBoard = null;
+          this.checkBlockedState(nextPlayer);
           return;
         }
         if (availableForOpponent.length === 1) {
@@ -622,6 +637,7 @@ export class UltimateChessGame {
       if (availableForNextPlayer.length === 0) {
         this.routingMode = "normal";
         this.requiredBoard = null;
+        this.checkBlockedState(nextPlayer);
         return;
       }
       if (availableForNextPlayer.length === 1) {
@@ -660,6 +676,7 @@ export class UltimateChessGame {
       if (availableForNextPlayer.length === 0) {
         this.routingMode = "normal";
         this.requiredBoard = null;
+        this.checkBlockedState(nextPlayer);
         return;
       }
       if (availableForNextPlayer.length === 1) {
